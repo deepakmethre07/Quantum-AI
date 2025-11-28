@@ -1,0 +1,5 @@
+This project simulates the E91 Quantum Key Distribution (QKD) protocol using the Qiskit framework. An entangled Bell state (Φ⁺) is generated and
+shared between two parties, Alice and Bob, by a source. Both users randomly choose their measurement bases and measure their respective qubits.
+When the chosen bases match, the measurement results are perfectly correlated and used to generate a secure secret key. When the bases differ, 
+the results are used for security checking. The simulation demonstrates how quantum entanglement and measurement randomness enable secure key 
+generation and highlights the principles of quantum cryptography.
