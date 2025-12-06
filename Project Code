@@ -2,67 +2,117 @@ from qiskit import QuantumCircuit, transpile
 from qiskit_aer import Aer
 import numpy as np
 
-# --- 1. Charlie (The Entangled Source) ---
+# ----------------------------------------
+# 1. Charlie (The Entangled Source)
+# ----------------------------------------
+
 def create_bell_state():
-    """Creates a Bell state circuit (|Phi+> = 1/sqrt(2) * (|00> + |11>))."""
+    """
+    Creates a Bell state circuit:
+    |Φ+> = 1/sqrt(2) * (|00> + |11>)
+    Qubit 0 -> Alice
+    Qubit 1 -> Bob
+    """
     qc = QuantumCircuit(2, 2)
-    qc.h(0)
-    qc.cx(0, 1)
+    qc.h(0)       # Put qubit 0 into superposition
+    qc.cx(0, 1)   # Entangle qubit 0 and qubit 1
     return qc
 
-# --- 2. Alice and Bob's Measurement Bases ---
-ALICE_BASES = [0, np.pi/4, np.pi/2]        # 0, 45, 90 degrees
-BOB_BASES   = [np.pi/4, np.pi/2, 3*np.pi/4]# 45, 90, 135 degrees
+
+# ----------------------------------------
+# 2. Alice and Bob's Measurement Bases
+# ----------------------------------------
+
+# Alice's measurement bases: 0°, 45°, 90°
+ALICE_BASES = [0, np.pi / 4, np.pi / 2]
+
+# Bob's measurement bases: 45°, 90°, 135°
+BOB_BASES = [np.pi / 4, np.pi / 2, 3 * np.pi / 4]
+
 
 def apply_measurement(circuit, qubit, basis_angle):
-    """Applies a rotation to change the measurement basis then measures."""
+    """
+    Applies a rotation to change the measurement basis, then measures.
+    - basis_angle: angle (in radians) defining the measurement direction
+    - For angle = 0, we just measure directly in Z-basis.
+    """
     if basis_angle != 0:
         circuit.ry(-basis_angle, qubit)
     circuit.measure(qubit, qubit)
     return circuit
 
-# --- 3. Protocol Simulation ---
+
+# ----------------------------------------
+# 3. E91 Protocol Simulation
+# ----------------------------------------
+
 def e91_simulation(num_bits):
+    """
+    Simulates the E91 protocol for a given number of rounds (num_bits).
+
+    For each round:
+      - Create a Bell pair (entangled qubits)
+      - Randomly choose Alice and Bob's bases
+      - Measure both qubits
+      - If bases match -> use as key bit
+      - Else -> use as correlation check (for Bell test in theory)
+
+    Returns:
+      key_stream: list of tuples (alice_bit, bob_bit, "Key"/"Check")
+    """
     key_stream = []
     simulator = Aer.get_backend('qasm_simulator')
 
     for _ in range(num_bits):
         qc = create_bell_state()
 
+        # Randomly choose measurement bases for Alice and Bob
         alice_basis_angle = np.random.choice(ALICE_BASES)
         bob_basis_angle   = np.random.choice(BOB_BASES)
 
+        # Apply measurement in chosen bases
         apply_measurement(qc, 0, alice_basis_angle)  # Alice measures qubit 0
         apply_measurement(qc, 1, bob_basis_angle)    # Bob measures qubit 1
 
+        # Compile and run the circuit
         compiled_circuit = transpile(qc, simulator)
         job = simulator.run(compiled_circuit, shots=1)
         result = job.result()
         counts = result.get_counts(qc)
 
-        measurement = list(counts.keys())[0]   # string like 'b_a'
-        alice_result = int(measurement[1])     # qubit 0 mapped to classical bit 0 (right char)
-        bob_result   = int(measurement[0])     # qubit 1 mapped to classical bit 1 (left char)
+        # Example `counts`: {'01': 1}  (bitstring: qubit1 qubit0)
+        measurement = list(counts.keys())[0]
 
-        # Classical post-processing (public channel)
+        # Qiskit order: left bit -> qubit 1 (Bob), right bit -> qubit 0 (Alice)
+        alice_result = int(measurement[1])  # qubit 0 mapped to classical bit 0 (right char)
+        bob_result   = int(measurement[0])  # qubit 1 mapped to classical bit 1 (left char)
+
+        # Classical post-processing (public discussion of bases)
         if alice_basis_angle == bob_basis_angle:
-            # For |Phi+>, results are correlated (same), so no flip required.
+            # For |Φ+>, results are correlated (same), so no flip needed.
             alice_key_bit = alice_result
-            bob_key_bit   = bob_result   # <-- removed the incorrect flip (1 - bob_result)
+            bob_key_bit   = bob_result
             key_stream.append((alice_key_bit, bob_key_bit, "Key"))
         else:
             key_stream.append((alice_result, bob_result, "Check"))
 
     return key_stream
 
-# --- 4. Running the Simulation ---
-NUMBER_OF_QUBITS = 10
-key_data = e91_simulation(NUMBER_OF_QUBITS)
 
-print(f"--- E91 Protocol Simulation ({NUMBER_OF_QUBITS} Rounds) ---")
-print("Alice's Bits | Bob's Bits | Purpose")
-print("---------------------------------")
-for alice_bit, bob_bit, purpose in key_data:
-    print(f"    {alice_bit}        |     {bob_bit}      | {purpose}")
-    if purpose == "Key":
-        print(f"    (Match? {alice_bit==bob_bit})")
+# ----------------------------------------
+# 4. Main: Run the Simulation
+# ----------------------------------------
+
+if __name__ == "__main__":
+    NUMBER_OF_QUBITS = 10  # Number of entangled pairs / rounds
+
+    key_data = e91_simulation(NUMBER_OF_QUBITS)
+
+    print(f"--- E91 Protocol Simulation ({NUMBER_OF_QUBITS} Rounds) ---")
+    print("Alice's Bits | Bob's Bits | Purpose")
+    print("---------------------------------")
+
+    for alice_bit, bob_bit, purpose in key_data:
+        print(f"    {alice_bit}        |     {bob_bit}      | {purpose}")
+        if purpose == "Key":
+            print(f"    (Match? {alice_bit == bob_bit})")
